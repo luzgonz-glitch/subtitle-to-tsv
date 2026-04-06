@@ -265,8 +265,8 @@ def convert_to_tsv_merged(
 st.title("Transcript to TSV Converter")
 
 st.write(
-    "Upload one or more VTT or TXT transcript files with `HH:MM:SS.mmm` timecodes and convert them to TSV with `HH:MM:SS` timcodes.
-    Optional: Merge rows based on set character targets to consolidate segments by the same speaker."
+    "Upload one or more VTT or TXT transcript files with `HH:MM:SS.mmm` timecodes and convert them to TSV with `HH:MM:SS` timcodes."
+    "Optional: Merge rows based on set character targets to consolidate segments by the same speaker."
 )
 st.markdown(
     """
