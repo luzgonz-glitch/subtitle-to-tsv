@@ -265,7 +265,8 @@ def convert_to_tsv_merged(
 st.title("Transcript to TSV Converter")
 
 st.write(
-    "Upload one or more VTT or TXT transcript files with `HH:MM:SS.mmm` timecodes and convert them to TSV with `HH:MM:SS` timcodes."
+    "Upload one or more VTT or TXT transcript files with `HH:MM:SS.mmm` timecodes and convert them to TSV with `HH:MM:SS` timcodes.
+    Optional: Merge rows based on set character targets to consolidate segments by the same speaker."
 )
 st.markdown(
     """
@@ -276,14 +277,14 @@ st.markdown(
 - Blocks **without** a leading hyphen are treated as a **continuation of the same speaker**.
 
 If your transcript does not use a leading `-` to mark new speakers, the “Convert and merge consecutive lines by speaker” option will still work,
-but all lines will be treated as coming from a single speaker and only merged by character length.
+but all lines will be treated as coming from a single speaker and only merged by character length. Not reccommended.
     """
 )
 
 mode = st.radio(
-    "Merging options",
+    "Conversion options",
     options=[
-        "Simple conversion",
+        "Simple conversion to TSV",
         "Convert and merge consecutive lines by speaker (character-based blocks)",
     ]
 )
