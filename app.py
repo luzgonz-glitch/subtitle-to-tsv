@@ -338,7 +338,7 @@ st.markdown(
   can be merged together.
 
 - If a block does **not** have a speaker name on the timecode line, the tool then checks
-  whether the block’s text **starts with a hyphen** (`-`):
+  whether the block's text **starts with a hyphen** (`-`):
   - Example text: `-When I was young I loved a tree`
   - This is treated as a **new unnamed speaker turn** (labeled `Speaker 1`, `Speaker 2`, etc.),
     and the leading `-` is removed from the text.
