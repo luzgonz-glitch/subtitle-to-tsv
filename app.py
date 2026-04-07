@@ -322,6 +322,7 @@ st.write(
     "Optional: Merge rows based on set character targets to consolidate segments by the same speaker."
 )
 
+with st.expander("Speaker detection (for merging mode)", expanded=False):
 st.markdown(
     """
 **Speaker detection (for merging mode)**
