@@ -332,8 +332,8 @@ st.markdown(
 
 - The tool first looks for a **speaker name on the timecode line**, after the end time.  
   - Example:  
-    `00:00:09.818 --> 00:00:11.344 ^t Medrano` → speaker = `Medrano`  
-    `00:00:43.044 --> 00:00:52.226 ^t Americo` → speaker = `Americo`
+    `00:00:09.818 --> 00:00:11.344 ^t Medrano` -> speaker = `Medrano`  
+    `00:00:43.044 --> 00:00:52.226 ^t Americo` -> speaker = `Americo`
 - All blocks that share the same speaker name are treated as the **same speaker** and
   can be merged together.
 
