@@ -323,7 +323,7 @@ st.write(
 )
 
 with st.expander("Speaker detection (for merging mode)", expanded=False):
-st.markdown(
+    st.markdown(
     """
 **Speaker detection (for merging mode)**
 
