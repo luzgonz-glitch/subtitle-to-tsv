@@ -39,83 +39,133 @@ def parse_blocks(lines):
     """
     Parse the text into blocks:
     - 1st line: timecode line 'HH:MM:SS.mmm --> HH:MM:SS.mmm'
+      optionally followed by a speaker name and/or text on the same line.
     - following lines until a blank line: transcription
-    Returns a list of (start_hhmmss, end_hhmmss, text).
+
+    Returns a list of (start_hhmmss, end_hhmmss, speaker_name_or_None, text).
     """
     blocks = []
     i = 0
     n = len(lines)
 
+    # Matches e.g.:
+    # "00:00:09.818 --> 00:00:11.344\tMedrano"
+    # "00:00:16.704 --> 00:00:19.114"
+    # "00:00:43.044 --> 00:00:52.226    Americo"
     time_pattern = re.compile(
-        r'^\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}'
+        r'^(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*'
+        r'(\d{2}:\d{2}:\d{2}\.\d{3})'
+        r'(?:\s+(.*))?$'  # optional trailing content (speaker name and/or text)
     )
 
     while i < n:
-        line = lines[i].strip()
+        line = lines[i].rstrip('\n')
 
         # Skip empty lines
-        if not line:
+        if not line.strip():
             i += 1
             continue
 
-        # If the line is a timecode line
-        if time_pattern.match(line):
-            time_line = line
+        m = time_pattern.match(line.strip())
+        if m:
+            start_raw = m.group(1)
+            end_raw = m.group(2)
+            trailing = m.group(3) or ""  # may contain speaker name and/or text
+
+            start = time_to_hhmmss(start_raw)
+            end = time_to_hhmmss(end_raw)
+
+            # Try to extract a speaker name from the trailing part.
+            # For now, we assume the trailing part is just the speaker name,
+            # e.g. "Medrano" or "Americo". If you later have cases where
+            # trailing also contains text, we can refine this.
+            speaker_name = trailing.strip() if trailing.strip() else None
+
             # Collect following text lines until next blank line or timecode
             i += 1
             text_lines = []
+
             while i < n:
-                curr = lines[i]
-                # Stop at blank line
-                if curr.strip() == '':
+                curr = lines[i].rstrip('\n')
+                if not curr.strip():
                     i += 1
                     break
-                # Stop if the next line looks like a timecode (start of next block)
                 if time_pattern.match(curr.strip()):
                     break
-                text_lines.append(curr.rstrip('\n'))
+                text_lines.append(curr)
                 i += 1
 
-            # Parse the timecodes
-            start_raw, end_raw = [part.strip() for part in time_line.split('-->')]
-            start = time_to_hhmmss(start_raw)
-            end = time_to_hhmmss(end_raw)
             text = ' '.join(text_lines).strip()
-
-            blocks.append((start, end, text))
+            blocks.append((start, end, speaker_name, text))
         else:
-            # If the line is not empty and not a timecode, skip it
+            # Not a timecode line; skip
             i += 1
 
     return blocks
-
 
 # ---------- Speaker segmentation and merging ----------
 
 def build_speaker_segments(blocks):
     """
-    From the list of (start, end, text) blocks, build a list of segments:
-      (speaker_id, start_td, end_td, text)
-    using leading '-' at the start of the text as new speaker markers.
-    Speakers are labeled S1, S2, S3,... in order of appearance.
+    From the list of (start, end, speaker_name, text) blocks, build a list of segments:
+      (speaker_label, start_td, end_td, text)
+
+    Speaker detection rules (in order of priority):
+
+      1. If the block has a non-empty speaker_name on the timecode line
+         (e.g. 'Medrano', 'Americo'), use that as the speaker label for this block
+         and for subsequent blocks until it changes.
+
+      2. If there is no speaker_name, but the text starts with a leading dash '-',
+         treat this as a new unnamed speaker turn:
+             - Strip the leading '-' from the text.
+             - Assign a new anonymous speaker label: 'Speaker 1', 'Speaker 2', etc.
+
+      3. If there is no speaker_name and no leading dash, treat this block as a
+         continuation of the previous speaker (if any). If there is no previous
+         speaker yet, label as 'Unknown'.
+
+    The speaker_label is either:
+      - the actual name from the timecode line (e.g. 'Medrano', 'Americo'), or
+      - an anonymous label like 'Speaker 1', 'Speaker 2', or
+      - 'Unknown' if nothing else is available.
     """
     segments = []
-    current_speaker_index = 0  # 0 means "no speaker yet"
+    last_speaker_label = None
+    anonymous_speaker_count = 0  # for dash-based unnamed speakers
 
-    for start_h, end_h, text in blocks:
-        # Determine if this block starts a new speaker turn
-        is_new_speaker = text.startswith("-")
-        cleaned_text = text.lstrip("-").strip()
+    for start_h, end_h, speaker_name, text in blocks:
+        raw_text = text or ""
+        cleaned_text = raw_text.strip()
 
-        if is_new_speaker or current_speaker_index == 0:
-            # New speaker
-            current_speaker_index += 1
-        speaker_id = f"S{current_speaker_index}"
+        # Case 1: explicit speaker name on timecode line
+        if speaker_name and speaker_name.strip():
+            speaker_label = speaker_name.strip()
+            last_speaker_label = speaker_label
+
+        else:
+            # No explicit name on this block
+            # Case 2: leading dash in text indicates a new unnamed speaker
+            if cleaned_text.startswith("-"):
+                anonymous_speaker_count += 1
+                speaker_label = f"Speaker {anonymous_speaker_count}"
+                # Strip the leading '-' (first occurrence after any leading spaces)
+                idx = raw_text.find("-")
+                stripped = raw_text[:idx] + raw_text[idx + 1:]
+                cleaned_text = stripped.strip()
+                last_speaker_label = speaker_label
+            else:
+                # Case 3: continuation of previous speaker, or Unknown
+                if last_speaker_label is not None:
+                    speaker_label = last_speaker_label
+                else:
+                    speaker_label = "Unknown"
+                    last_speaker_label = speaker_label
 
         start_td = hhmmss_to_timedelta(start_h)
         end_td = hhmmss_to_timedelta(end_h)
 
-        segments.append((speaker_id, start_td, end_td, cleaned_text))
+        segments.append((speaker_label, start_td, end_td, cleaned_text))
 
     return segments
 
@@ -213,7 +263,7 @@ def convert_to_tsv_simple(file_content: str) -> str:
         "Stop Timestamp (HH:MM:SS)\t"
         "Transcription of the audio byte\n"
     )
-    for start, end, text in blocks:
+    for start, end, speaker_name, text in blocks:
         safe_text = text.replace('\t', ' ').replace('\n', ' ')
         output.write(f"{start}\t{end}\t{safe_text}\n")
 
@@ -276,12 +326,32 @@ st.markdown(
     """
 **Speaker detection (for merging mode)**
 
-- The tool treats any block whose text **starts with a hyphen** (`-`) as a **new speaker turn**.
-  - Example: `-When I was young I loved a tree`
-- Blocks **without** a leading hyphen are treated as a **continuation of the same speaker**.
+st.markdown(
+    """
+**Speaker detection (for merging mode)**
 
-If your transcript does not use a leading `-` to mark new speakers, the “Convert and merge consecutive lines by speaker” option will still work,
-but all lines will be treated as coming from a single speaker and only merged by character length. Not reccommended.
+- The tool first looks for a **speaker name on the timecode line**, after the end time.  
+  - Example:  
+    `00:00:09.818 --> 00:00:11.344 ^t Medrano` → speaker = `Medrano`  
+    `00:00:43.044 --> 00:00:52.226 ^t Americo` → speaker = `Americo`
+- All blocks that share the same speaker name are treated as the **same speaker** and
+  can be merged together.
+
+- If a block does **not** have a speaker name on the timecode line, the tool then checks
+  whether the block’s text **starts with a hyphen** (`-`):
+  - Example text: `-When I was young I loved a tree`
+  - This is treated as a **new unnamed speaker turn** (labeled `Speaker 1`, `Speaker 2`, etc.),
+    and the leading `-` is removed from the text.
+
+- If a block has **no speaker name** and its text does **not** start with `-`, it is treated
+  as a **continuation of the previous speaker**. If there is no previous speaker yet, the
+  speaker is labeled `"Unknown"`.
+
+For best results, use the “Convert and merge consecutive lines by speaker” option only when
+your transcript either:
+- includes speaker names on the timecode lines, or
+- uses a leading `-` to mark new speaker turns.
+Otherwise, speaker separation may not match the actual conversation.
     """
 )
 
