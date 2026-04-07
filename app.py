@@ -347,7 +347,7 @@ st.markdown(
   as a **continuation of the previous speaker**. If there is no previous speaker yet, the
   speaker is labeled `"Unknown"`.
 
-For best results, use the “Convert and merge consecutive lines by speaker” option only when
+For best results, use the **Convert and merge consecutive lines by speaker** option only when
 your transcript either:
 - includes speaker names on the timecode lines, or
 - uses a leading `-` to mark new speaker turns.
