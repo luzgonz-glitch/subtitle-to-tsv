@@ -326,10 +326,6 @@ st.markdown(
     """
 **Speaker detection (for merging mode)**
 
-st.markdown(
-    """
-**Speaker detection (for merging mode)**
-
 - The tool first looks for a **speaker name on the timecode line**, after the end time.  
   - Example:  
     `00:00:09.818 --> 00:00:11.344 ^t Medrano` -> speaker = `Medrano`  
