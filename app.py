@@ -272,7 +272,7 @@ def convert_to_tsv_simple(file_content: str) -> str:
         "Transcription of the audio byte\n"
     )
     for start, end, speaker_name, text in blocks:
-        safe_text = text.replace('\t', ' ').replace('\n', ' ')
+        safe_text = " ".join(text.split())
         safe_speaker = (speaker_name or "").replace('\t', ' ').replace('\n', ' ')
         output.write(f"{start}\t{end}\t{safe_speaker}\t{safe_text}\n")
 
@@ -310,12 +310,15 @@ def convert_to_tsv_merged(
         "Speaker\t"
         "Transcription of the audio byte\n"
     )
+
     for speaker_id, start_td, end_td, text in merged_segments:
-        safe_text = text.replace('\t', ' ').replace('\n', ' ')
+        # Normalize whitespace: remove tabs and newlines so each row is a single line
+        safe_text = " ".join(text.split())  # collapses all whitespace (including newlines) to single spaces
+        safe_speaker = str(speaker_id).replace('\t', ' ').replace('\n', ' ')
         start_str = timedelta_to_hhmmss(start_td)
         end_str = timedelta_to_hhmmss(end_td)
-        output.write(f"{start_str}\t{end_str}\t{speaker_id}\t{safe_text}\n")
-
+        output.write(f"{start_str}\t{end_str}\t{safe_speaker}\t{safe_text}\n")
+    
     return output.getvalue()
 
 
