@@ -37,10 +37,12 @@ def timedelta_to_hhmmss(td: timedelta) -> str:
 
 def parse_blocks(lines):
     """
-    Parse the text into blocks:
-    - 1st line: timecode line 'HH:MM:SS.mmm --> HH:MM:SS.mmm'
-      optionally followed by a speaker name and/or text on the same line.
-    - following lines until a blank line: transcription
+    Parse a WEBVTT-like transcript into blocks:
+
+    - Timecode line: 'HH:MM:SS.mmm --> HH:MM:SS.mmm' with optional speaker
+      after whitespace or a tab (e.g. '... --> ...\\tAmerico').
+    - Following lines until a blank line or next timecode: transcription
+      (including [On screen: ...] lines).
 
     Returns a list of (start_hhmmss, end_hhmmss, speaker_name_or_None, text).
     """
@@ -48,37 +50,37 @@ def parse_blocks(lines):
     i = 0
     n = len(lines)
 
-    # Matches e.g.:
-    # "00:00:09.818 --> 00:00:11.344\tMedrano"
-    # "00:00:16.704 --> 00:00:19.114"
-    # "00:00:43.044 --> 00:00:52.226    Americo"
+    # Timecode with optional trailing speaker (after whitespace or tab)
     time_pattern = re.compile(
         r'^(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*'
         r'(\d{2}:\d{2}:\d{2}\.\d{3})'
-        r'(?:\s+(.*))?$'  # optional trailing content (speaker name and/or text)
+        r'(?:\s+(.*))?$'
     )
 
     while i < n:
-        line = lines[i].rstrip('\n')
+        raw_line = lines[i]
+        line = raw_line.rstrip('\n')
 
-        # Skip empty lines
-        if not line.strip():
+        # Skip WEBVTT header, empty lines, and numeric cue numbers
+        stripped = line.strip()
+        if (
+            not stripped
+            or stripped.upper() == "WEBVTT"
+            or stripped.isdigit()
+        ):
             i += 1
             continue
 
-        m = time_pattern.match(line.strip())
+        m = time_pattern.match(stripped)
         if m:
             start_raw = m.group(1)
             end_raw = m.group(2)
-            trailing = m.group(3) or ""  # may contain speaker name and/or text
+            trailing = m.group(3) or ""  # may contain speaker name
 
             start = time_to_hhmmss(start_raw)
             end = time_to_hhmmss(end_raw)
 
-            # Try to extract a speaker name from the trailing part.
-            # For now, we assume the trailing part is just the speaker name,
-            # e.g. "Medrano" or "Americo". If you later have cases where
-            # trailing also contains text, we can refine this.
+            # Treat the entire trailing part as the speaker name (if present)
             speaker_name = trailing.strip() if trailing.strip() else None
 
             # Collect following text lines until next blank line or timecode
@@ -86,12 +88,19 @@ def parse_blocks(lines):
             text_lines = []
 
             while i < n:
-                curr = lines[i].rstrip('\n')
+                curr_raw = lines[i]
+                curr = curr_raw.rstrip('\n')
+
+                # Stop at blank line
                 if not curr.strip():
                     i += 1
                     break
+
+                # Stop if the next line looks like a timecode (start of next block)
                 if time_pattern.match(curr.strip()):
                     break
+
+                # Keep everything, including [On screen: ...]
                 text_lines.append(curr)
                 i += 1
 
@@ -124,11 +133,6 @@ def build_speaker_segments(blocks):
       3. If there is no speaker_name and no leading dash, treat this block as a
          continuation of the previous speaker (if any). If there is no previous
          speaker yet, label as 'Unknown'.
-
-    The speaker_label is either:
-      - the actual name from the timecode line (e.g. 'Medrano', 'Americo'), or
-      - an anonymous label like 'Speaker 1', 'Speaker 2', or
-      - 'Unknown' if nothing else is available.
     """
     segments = []
     last_speaker_label = None
@@ -252,7 +256,8 @@ def merge_segments_by_speaker(
 
 def convert_to_tsv_simple(file_content: str) -> str:
     """
-    Original behavior: one row per cue/block, no merging, no speaker column.
+    Simple behavior: one row per cue/block, no merging.
+    NOW includes a Speaker column.
     """
     lines = file_content.splitlines(keepends=True)
     blocks = parse_blocks(lines)
@@ -261,11 +266,13 @@ def convert_to_tsv_simple(file_content: str) -> str:
     output.write(
         "Start Timestamp (HH:MM:SS)\t"
         "Stop Timestamp (HH:MM:SS)\t"
+        "Speaker\t"
         "Transcription of the audio byte\n"
     )
     for start, end, speaker_name, text in blocks:
         safe_text = text.replace('\t', ' ').replace('\n', ' ')
-        output.write(f"{start}\t{end}\t{safe_text}\n")
+        safe_speaker = (speaker_name or "").replace('\t', ' ').replace('\n', ' ')
+        output.write(f"{start}\t{end}\t{safe_speaker}\t{safe_text}\n")
 
     return output.getvalue()
 
@@ -329,8 +336,8 @@ with st.expander("Speaker detection (for merging mode)", expanded=False):
 
 - The tool first looks for a **speaker name on the timecode line**, after the end time.  
   - Example:  
-    `00:00:09.818 --> 00:00:11.344 ^t Medrano` -> speaker = `Medrano`  
-    `00:00:43.044 --> 00:00:52.226 ^t Americo` -> speaker = `Americo`
+    `00:00:09.818 --> 00:00:11.344\tMedrano` -> speaker = `Medrano`  
+    `00:00:43.044 --> 00:00:52.226\tAmerico` -> speaker = `Americo`
 - All blocks that share the same speaker name are treated as the **same speaker** and
   can be merged together.
 
@@ -382,7 +389,7 @@ else:
     max_chars = None
 
 uploaded_files = st.file_uploader(
-    "Choose one or more.vtt or.txt files",
+    "Choose one or more .vtt or .txt files",
     type=["vtt", "txt"],
     accept_multiple_files=True
 )
@@ -398,7 +405,7 @@ if uploaded_files:
             st.error(f"Could not decode file {uploaded_file.name} as UTF-8.")
             continue
 
-        if mode == "Simple conversion":
+        if mode == "Simple conversion to TSV":
             tsv_text = convert_to_tsv_simple(file_text)
         else:
             tsv_text = convert_to_tsv_merged(
