@@ -167,10 +167,12 @@ def build_speaker_segments(blocks):
                     last_speaker_label = speaker_label
 
         start_td = hhmmss_to_timedelta(start_h)
-        end_td = hhmmss_to_timedelta(end_h)
+end_td = hhmmss_to_timedelta(end_h)
 
-        segments.append((speaker_label, start_td, end_td, cleaned_text))
+# Normalize whitespace: remove internal newlines so each segment is one line
+normalized_text = cleaned_text.replace('\n', ' ').strip()
 
+segments.append((speaker_label, start_td, end_td, normalized_text))
     return segments
 
 
