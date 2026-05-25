@@ -173,7 +173,8 @@ def build_speaker_segments(blocks):
         normalized_text = cleaned_text.replace('\n', ' ').strip()
         
         segments.append((speaker_label, start_td, end_td, normalized_text))
-            return segments
+            
+    return segments
 
 def merge_segments_by_speaker(
     segments,
